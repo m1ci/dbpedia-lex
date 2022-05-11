@@ -13,6 +13,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.jena.graph.{Triple => JenaTriple}
 import org.apache.hadoop.fs.{FileSystem, FileUtil, Path}
 
+import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 import scala.util.Try
 
 object LexUtils {
@@ -43,6 +45,8 @@ object LexUtils {
 
     implicit def rddToAnyProc[T](rdd: RDD[T]) = new AnyProcessor[T](rdd)
 
+    implicit def rddToModelProcessor(rdd: RDD[Model]) = new ModelProcessor(rdd)
+
     class TripleExtractor(rdd: RDD[String]) {
 
       def extractTriples(filters: Option[Set[String]]): RDD[JenaTriple] = {
@@ -60,33 +64,14 @@ object LexUtils {
             trpl
           }.toOption)
       }
-    }
 
-    class AnyProcessor[T](rdd: RDD[T]) {
 
-      def printFirstN(n: Int): Unit =
-        rdd
-          .take(n)
-          .foreach(t => println(t.toString))
-
-    }
-
-    class TripleProcessor(rdd: RDD[JenaTriple]) {
-
-      def saveToNTriplesFile(filename: String): Unit = {
+      def saveToFile(fn: String): Unit = {
         val tmp_fld = UUID.randomUUID().toString
-        val out_pa = Paths.get(filename)
+        val out_pa = Paths.get(fn)
         val out = new Path(out_pa.toAbsolutePath.toFile.getAbsolutePath)
         val tmp_out = out_pa.getParent.resolve(tmp_fld)
         rdd
-          .map(t => {
-            val m = ModelFactory.createDefaultModel()
-            m.getGraph.add(t)
-            val out = new ByteArrayOutputStream()
-            RDFDataMgr.write(out, m.getGraph, Lang.NTRIPLES)
-            m.close()
-            out.toString.replaceAllLiterally("\n", "").replaceAllLiterally("\r", "")
-          })
           .repartition(1)
           .saveAsTextFile(tmp_out.toFile.getAbsolutePath)
         val hdfs = FileSystem.get(rdd.sparkContext.hadoopConfiguration)
@@ -103,15 +88,70 @@ object LexUtils {
         )
         FileUtil.fullyDelete(tmp_out.toFile)
       }
+
+
+    }
+
+    class ModelProcessor(rdd: RDD[Model]) {
+
+      def extractTriplesSeq: RDD[Seq[JenaTriple]] =
+        extractTriples(rdd)
+
+      def extractSingleTripes: RDD[JenaTriple] =
+        extractTriples(rdd)
+          .flatMap(s => s)
+
+      private def extractTriples(rdd: RDD[Model]) = {
+        rdd.map(m => {
+          val re = m.getGraph.find().asScala.toSeq
+          m.close()
+          re
+        })
+      }
+
+    }
+
+    class AnyProcessor[T](rdd: RDD[T]) {
+
+      def printFirstN(n: Int): Unit =
+        rdd
+          .take(n)
+          .foreach(t => println(t.toString))
+
+      def limit(n: Int)(implicit tag: ClassTag[T]): RDD[T] =
+        if (n > 0) {
+          rdd.sparkContext
+            .makeRDD(rdd.take(n), 1)
+        } else {
+          rdd
+        }
+
+    }
+
+    class TripleProcessor(rdd: RDD[JenaTriple]) {
+
+      def saveToNTriplesFile(filename: String): Unit = {
+        rdd
+          .map(t => {
+            val m = ModelFactory.createDefaultModel()
+            m.getGraph.add(t)
+            val out = new ByteArrayOutputStream()
+            RDFDataMgr.write(out, m.getGraph, Lang.NTRIPLES)
+            m.close()
+            out.toString.replaceAllLiterally("\n", "").replaceAllLiterally("\r", "")
+          })
+          .saveToFile(filename)
+      }
     }
 
     class TripleSeqProcessor(rdd: RDD[Seq[JenaTriple]]) {
 
-      def printOne(lang: String) =
+      def printOne(lang: String, lbl: Option[String] = None) =
         rdd
-          .map(LexUtils.trpilesToRawTtlString(_, lang))
+          .map(LexUtils.triplesToRawTtlString(_, lang))
           .take(1)
           .foreach(m => {
+            println(s"Model for $lbl list of triples: ")
             println(m)
           })
 
@@ -119,8 +159,22 @@ object LexUtils {
 
   }
 
+  def labelTripleToModel(triple: JenaTriple, lang: String): Model = {
+    val word = triple.getObject.getLiteralValue.toString
+    val model = ModelFactory.createDefaultModel()
+    val ler = model.createResource(le(lang, LexUtils.replaceBrackets(word)))
+    val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(word)))
+    val lsr = model.createResource(ls(lang, word, 1))
+    cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word), lang))
+    lsr.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
+    lsr.addProperty(model.createProperty(OntolexReference), model.createResource(triple.getSubject.getURI))
+    LexUtils.extractFromFirstBrackets(word)
+      .foreach(s => lsr.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
+    lexEntry(ler, lsr, cfr)(model)
+  }
 
-  def trpilesToRawTtlString(tpls: Seq[JenaTriple], lang: String): String = {
+
+  def triplesToRawTtlString(tpls: Seq[JenaTriple], lang: String): String = {
     val model = ModelFactory.createDefaultModel()
     tpls.foreach(model.getGraph.add)
     model.setNsPrefix("ontolex", LexUtils.OntolexPrefix)
@@ -143,11 +197,11 @@ object LexUtils {
       p
     }).toMap
     words.foreach(w => {
-      val ler = model.createResource(le(lang, w))
-      val lsr = senses(w)
-      val cfr = model.createResource(cf(lang, w))
-      lexEntry(ler, lsr, cfr)(model)
       val s = if (replaceBrackets) LexUtils.replaceBrackets(w) else w
+      val ler = model.createResource(le(lang, s))
+      val lsr = senses(w)
+      val cfr = model.createResource(cf(lang, s))
+      lexEntry(ler, lsr, cfr)(model)
       cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(s, lang))
       synEntry(lsr, (senses - w).values.toSeq, senseLink)(model)
     })
@@ -156,7 +210,7 @@ object LexUtils {
 
   def polysemi(word: String, links: Seq[String], lang: String)(model: Model) = {
     val senses = links.zipWithIndex.map(p => {
-      val r = model.createResource(ls(lang, word, p._2))
+      val r = model.createResource(ls(lang, word, p._2 + 1))
       r.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
       r.addProperty(model.createProperty(OntolexReference), model.createResource(p._1))
     })
@@ -179,15 +233,15 @@ object LexUtils {
   def extractFromFirstBrackets(s: String): Option[String] =
     InsideBracketsPattern.findFirstMatchIn(s).map(_.group(1))
 
-  def polysemi(word: (String, String), wordsNlinks: Seq[(String, String)], lang: String)(model: Model) = {
+  def polysemiDisambig(word: (String, String), wordsNlinks: Seq[(String, String)], lang: String)(model: Model) = {
     val senses = wordsNlinks.map(_._1).map(w => {
       val p = (w, model.createResource(ls(lang, w, 1)))
       LexUtils.extractFromFirstBrackets(w)
         .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
       p
     }).toMap
-    val ler = model.createResource(le(lang, word._1))
-    val cfr = model.createResource(cf(lang, word._1))
+    val ler = model.createResource(le(lang, LexUtils.replaceBrackets(word._1)))
+    val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(word._1)))
 
     ler.addProperty(RDF.`type`, model.createResource(OntolexLexicalEntry))
     ler.addProperty(model.createProperty(OntolexCanonicalForm), cfr)
@@ -195,8 +249,8 @@ object LexUtils {
     cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word._1), lang))
 
     wordsNlinks.foreach(p => {
-      val ler = model.createResource(le(lang, p._1))
-      val cfr = model.createResource(cf(lang, p._1))
+      val ler = model.createResource(le(lang, LexUtils.replaceBrackets(p._1)))
+      val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(p._1)))
       val lsr = senses(p._1)
       LexUtils.lexEntry(ler, lsr, cfr)(model)
       cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word._1), lang))
@@ -241,20 +295,20 @@ object LexUtils {
     model
   }
 
-  private def link(lang: String, sn: String, value: String): String = {
+  private[dbpedialex] def link(lang: String, sn: String, value: String): String = {
     val va = value.replaceAll("\\s", "_")
     val re = LexPrefix + s"$lang/${sn}_"
     val full = re + va
     //todo here we need to properly normalize instead of replacing
     val iri = IRIFactory.iriImplementation().create(full)
     if (iri.hasViolation(true)) {
-      val errs = value
+      val errs = va
         .toSet
         .filter(c => IRIFactory.iriImplementation()
           .create(c.toString)
           .hasViolation(true)
         )
-      re + errs.foldLeft(value) {
+      re + errs.foldLeft(va) {
         case (s, c) => s.replaceAllLiterally(c.toString, URLEncoder.encode(c.toString, "UTF-8"))
       }
     } else {
