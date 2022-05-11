@@ -66,17 +66,15 @@ object LexExtractor {
       .join(labels)
       .map(r => {
         val subj_label = r._2._2.getObject.getLiteralValue.toString
-        (r._2._1.getObject.toString, (subj_label, r._2._1))
+        (r._2._1.getObject.getURI, (subj_label, r._2._1))
       })
-      .join(labels)
+      .leftOuterJoin(labels)
       .map(r => {
-        val obj_label = r._2._2.getObject.getLiteralValue.toString
+        val obj_label = r._2._2.map(_.getObject.getLiteralValue.toString)
         (r._2._1._1, r._2._1._2, obj_label)
       })
       .groupBy(_._2.getSubject.getURI)
-      .map(r => {
-        r._2
-      })
+      .map(_._2)
 
     rs.printFirstN(10)
 
@@ -161,7 +159,7 @@ object LexExtractor {
   }
 
 
-  def extractPolysemAndSynonymsFromWikilinks(wikilinksFN: String, outputPolysemFN: String, outputSynonymsFN: String, lang: String)(spark: SparkSession) = {
+  def extractPolysemAndSynonymsFromWikilinks(wikilinksFN: String, redirectsFN: String, outputPolysemFN: String, outputSynonymsFN: String, lang: String)(spark: SparkSession) = {
     val filters = Set(
       wikilinksLink,
       wikilinksSf
@@ -176,12 +174,17 @@ object LexExtractor {
 
     val groupById = triples
       .groupBy(_.getSubject)
-    extractPolysem(groupById, outputPolysemFN, lang)
+
+    val reds = spark.sparkContext
+      .textFile(redirectsFN)
+      .extractTriples(None)
+
+    extractPolysem(groupById, reds, outputPolysemFN, lang)
     extractSynonyms(groupById, outputSynonymsFN, lang)
   }
 
 
-  private def extractPolysem(triplesById:  RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String) = {
+  private def extractPolysem(triplesById: RDD[(Node, Iterable[JenaTriple])], redirects: RDD[JenaTriple], outputFN: String, lang: String) = {
     val polysemy = triplesById
       .map(tps => {
         val li = tps._2.find(_.getPredicate.getURI == wikilinksLink)
@@ -213,12 +216,31 @@ object LexExtractor {
       .filter(tps => tps.count(_.getObject.toString.contains("LexicalSense")) > 3 && tps.count(_.getObject.toString.contains("LexicalSense")) < 10)
       .printOne(lang, Some("polysem_links"))
 
-    seqs
-      .flatMap(s => s)
-      .saveToNTriplesFile(outputFN)
+    replaceWithRedirects(
+      seqs
+        .flatMap(s => s),
+      redirects
+    ).saveToNTriplesFile(outputFN)
   }
 
-  private def extractSynonyms(triplesById:  RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String) = {
+  private def replaceWithRedirects(triples: RDD[JenaTriple], redirects: RDD[JenaTriple]): RDD[JenaTriple] = {
+    val senses = triples.filter(_.getPredicate.getURI == LexUtils.OntolexReference)
+    val other = triples.filter(_.getPredicate.getURI != LexUtils.OntolexReference)
+
+    senses.keyBy(_.getObject.getURI)
+      .leftOuterJoin(redirects.keyBy(_.getSubject.getURI))
+      .map(_._2)
+      .map(p =>
+        p._2
+          .map(red =>
+            JenaTriple.create(p._1.getSubject, p._1.getPredicate, red.getObject)
+          )
+          .getOrElse(p._1)
+      )
+      .union(other)
+  }
+
+  private def extractSynonyms(triplesById: RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String) = {
     val synonyms = triplesById
       .map(tps => {
         val li = tps._2.find(_.getPredicate.getURI == wikilinksLink)

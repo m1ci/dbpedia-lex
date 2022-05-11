@@ -1,7 +1,7 @@
 package org.dbpedialex
 
 import java.io.ByteArrayOutputStream
-import java.net.URLEncoder
+import java.net.{URLDecoder, URLEncoder}
 import java.nio.file.Paths
 import java.util.UUID
 
@@ -225,6 +225,16 @@ object LexUtils {
     model
   }
 
+  def extractLabelFromIri(iri: String): String =
+    URLDecoder
+      .decode(
+        Paths.get(
+          IRIFactory.iriImplementation()
+            .create(iri)
+            .getRawPath
+        ).getFileName.toString,
+        "UTF-8")
+      .replace('_', ' ')
 
   def replaceBrackets(s: String): String =
     s.replaceAll(InsideBracketsPattern.toString(), "").trim
@@ -233,13 +243,16 @@ object LexUtils {
   def extractFromFirstBrackets(s: String): Option[String] =
     InsideBracketsPattern.findFirstMatchIn(s).map(_.group(1))
 
-  def polysemiDisambig(word: (String, String), wordsNlinks: Seq[(String, String)], lang: String)(model: Model) = {
-    val senses = wordsNlinks.map(_._1).map(w => {
-      val p = (w, model.createResource(ls(lang, w, 1)))
-      LexUtils.extractFromFirstBrackets(w)
-        .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
-      p
-    }).toMap
+  def polysemiDisambig(word: (String, String), labsNlinks: Seq[(Option[String], String)], lang: String)(model: Model) = {
+    val wordsNlinks = labsNlinks.map(s => (s._1.getOrElse(LexUtils.extractLabelFromIri(s._2)), s._2))
+    val senses = wordsNlinks
+      .map(_._1)
+      .map(w => {
+        val p = (w, model.createResource(ls(lang, w, 1)))
+        LexUtils.extractFromFirstBrackets(w)
+          .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
+        p
+      }).toMap
     val ler = model.createResource(le(lang, LexUtils.replaceBrackets(word._1)))
     val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(word._1)))
 
