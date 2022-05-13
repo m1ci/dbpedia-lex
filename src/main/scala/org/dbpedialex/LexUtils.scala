@@ -22,7 +22,7 @@ object LexUtils {
   private val InsideBracketsPattern = "\\((.+?)\\)".r
 
   val LexPrefix = "https://dbpedia.org/lex/"
-  val OntolexPrefix = "http://www.w3.org/ns/lemon/ontolex/"
+  val OntolexPrefix = "http://www.w3.org/ns/lemon/ontolex#"
   val LexInfoPrefix = "http://www.lexinfo.net/ontology/2.0/lexinfo#"
   val DctTermsPrefix = "http://purl.org/dc/terms/"
 
@@ -49,12 +49,12 @@ object LexUtils {
 
     class TripleExtractor(rdd: RDD[String]) {
 
-      def extractTriples(filters: Option[Set[String]]): RDD[JenaTriple] = {
+      def extractTriples(filter: Option[String => Boolean]): RDD[JenaTriple] = {
         val tmp = rdd.map(_.trim)
           .filter(_.nonEmpty)
 
-        filters
-          .map(f => tmp.filter(s => f.exists(s.contains)))
+        filter
+          .map(f => tmp.filter(f))
           .getOrElse(tmp)
           //todo: here we can improve by parsing batches of strings
           .flatMap(s => Try(parseString(s)).toOption)

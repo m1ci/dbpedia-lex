@@ -40,6 +40,7 @@ object LexExtractor {
 
     seqs.flatMap(s => s)
       .saveToNTriplesFile(outputFN)
+    outputFN
   }
 
   def extractPolysemFromDisambiguations(disambigFN: String, labelsFN: String, outputFN: String, lang: String)(spark: SparkSession) = {
@@ -49,7 +50,7 @@ object LexExtractor {
 
     val trpls = spark.sparkContext
       .textFile(disambigFN)
-      .extractTriples(Some(filters))
+      .extractTriples(Some(filterFromSet(filters)))
       .limit(DebugLimit)
 
     val labTriples = spark.sparkContext
@@ -96,6 +97,7 @@ object LexExtractor {
     ds
       .flatMap(a => a)
       .saveToNTriplesFile(outputFN)
+    outputFN
   }
 
   def extractSynonymsFromRedirects(redirectsFN: String, labelsFN: String, outputFN: String, lang: String)(spark: SparkSession) = {
@@ -156,6 +158,7 @@ object LexExtractor {
     models
       .flatMap(a => a)
       .saveToNTriplesFile(outputFN)
+    outputFN
   }
 
 
@@ -167,7 +170,7 @@ object LexExtractor {
 
     val triples = spark.sparkContext
       .textFile(wikilinksFN)
-      .extractTriples(Some(filters))
+      .extractTriples(Some(filterFromSet(filters)))
       .limit(DebugLimit)
 
     triples.printFirstN(100)
@@ -181,6 +184,7 @@ object LexExtractor {
 
     extractPolysem(groupById, reds, outputPolysemFN, lang)
     extractSynonyms(groupById, outputSynonymsFN, lang)
+    Seq(outputPolysemFN, outputSynonymsFN)
   }
 
 
@@ -221,6 +225,7 @@ object LexExtractor {
         .flatMap(s => s),
       redirects
     ).saveToNTriplesFile(outputFN)
+    outputFN
   }
 
   private def replaceWithRedirects(triples: RDD[JenaTriple], redirects: RDD[JenaTriple]): RDD[JenaTriple] = {
@@ -274,6 +279,11 @@ object LexExtractor {
     seqs
       .flatMap(s => s)
       .saveToNTriplesFile(outputFN)
+    outputFN
   }
+
+  private def filterFromSet(takeOnlyContaining: Set[String]): String => Boolean =
+    (s: String) => takeOnlyContaining.exists(s.contains)
+
 
 }
