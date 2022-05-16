@@ -1,7 +1,7 @@
 name := "dbpedia-lex"
 version := "0.1"
 
-scalaVersion := "2.12.15"
+scalaVersion := "2.12.13"
 
 mainClass in assembly := Some("org.dbpedialex.LexApp")
 
@@ -15,6 +15,6 @@ libraryDependencies ++= Seq(
 )
 
 assemblyMergeStrategy in assembly := {
-  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
+  case PathList("META-INF", _) => MergeStrategy.discard
   case _ => MergeStrategy.first
 }

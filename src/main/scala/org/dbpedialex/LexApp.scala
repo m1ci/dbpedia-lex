@@ -36,7 +36,7 @@ object LexApp {
 
     val outAllMerged = outRoot.resolve("all_merged.nt")
 
-    val spark = initSpark()
+    lazy val spark = initSpark()
 
     val labs = labels match {
       case Some(l) => Seq(LexExtractor.extractLexEntriesFromLabels(l, outLexEntrLabels, lang)(spark))
@@ -62,12 +62,13 @@ object LexApp {
       disr,
       labs,
       links,
-      labs
+      redir
     ).flatten
 
-    println(s"Generated following files: $fns. Now merging.")
+    println(s"Generated following files: $fns.")
 
     if (fns.size > 1) {
+      println("Now merging.")
       LexExtractor.mergeAllDistinct(fns, outAllMerged)(spark)
       println(s"Merge completed!")
     }
