@@ -25,6 +25,7 @@ object LexUtils {
   val OntolexPrefix = "http://www.w3.org/ns/lemon/ontolex#"
   val LexInfoPrefix = "http://www.lexinfo.net/ontology/2.0/lexinfo#"
   val DctTermsPrefix = "http://purl.org/dc/terms/"
+  val FracPrefix = "http://www.w3.org/nl/lemon/frac#"
 
   val OntolexCanonicalForm = OntolexPrefix + "canonicalForm"
   val OntolexSense = OntolexPrefix + "sense"
@@ -34,6 +35,10 @@ object LexUtils {
   val OntolexReference = OntolexPrefix + "reference"
   val LexInfoSyn = LexInfoPrefix + "synonym"
   val DctSubject = DctTermsPrefix + "subject"
+  val FracFrequency = FracPrefix + "frequency"
+  val FracCorpusFrequency = FracPrefix + "CorpusFrequency"
+  val FracCorpus = FracPrefix + "corpus"
+  private val FracCorpusValue = "https://databus.dbpedia.org/dbpedia/text/nif-text-links/"
 
   object Spark {
 
@@ -187,16 +192,18 @@ object LexUtils {
     out.toString
   }
 
-  def synonyms(senseLink: String, words: Seq[String], lang: String, replaceBrackets: Boolean)(model: Model) = {
+  def synonyms(senseLink: String, wordsNFreqs: Seq[(String, Option[Int])], lang: String, replaceBrackets: Boolean)(model: Model) = {
+    val words = filterUnreliable(wordsNFreqs)
     val senses = words.map(w => {
-      val p = (w, model.createResource(ls(lang, w, 1)))
+      val p = (w._1, model.createResource(ls(lang, w._1, 1)))
       if (replaceBrackets) {
-        LexUtils.extractFromFirstBrackets(w)
+        LexUtils.extractFromFirstBrackets(w._1)
           .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
       }
+      w._2.foreach(addFreqToSense(p._2, _)(model))
       p
     }).toMap
-    words.foreach(w => {
+    words.map(_._1).foreach(w => {
       val s = if (replaceBrackets) LexUtils.replaceBrackets(w) else w
       val ler = model.createResource(le(lang, s))
       val lsr = senses(w)
@@ -208,11 +215,26 @@ object LexUtils {
     model
   }
 
-  def polysemi(word: String, links: Seq[String], lang: String)(model: Model) = {
+  def filterUnreliable(wordsNFreq: Seq[(String, Option[Int])]): Seq[(String, Option[Int])] = {
+    val size = wordsNFreq.flatMap(_._2).size
+    if (size > 0) {
+      val sumFreq = wordsNFreq.flatMap(_._2).sum
+      val averageFreq = sumFreq / size
+        wordsNFreq.filter(_._2 match {
+          case Some(fr) => fr >= averageFreq
+          case None => false
+        })
+    } else {
+      wordsNFreq
+    }
+  }
+
+  def polysemi(word: String, links: Seq[(String, Int)], lang: String)(model: Model) = {
     val senses = links.zipWithIndex.map(p => {
       val r = model.createResource(ls(lang, word, p._2 + 1))
       r.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
-      r.addProperty(model.createProperty(OntolexReference), model.createResource(p._1))
+      r.addProperty(model.createProperty(OntolexReference), model.createResource(p._1._1))
+      addFreqToSense(r, p._1._2)(model)
     })
 
     val ler = model.createResource(le(lang, word))
@@ -292,6 +314,15 @@ object LexUtils {
       .build()
       .parse(model)
     model
+  }
+
+  def addFreqToSense(sense: Resource, freq: Int)(model: Model): Resource = {
+    val frr = model.createResource()
+    sense.addProperty(model.createProperty(FracFrequency), frr)
+    frr.addProperty(RDF.`type`, model.createResource(FracCorpusFrequency))
+    frr.addProperty(model.createProperty(FracCorpus), model.createResource(FracCorpusValue))
+    frr.addProperty(RDF.value, model.createTypedLiteral(Integer.valueOf(freq)))
+    sense
   }
 
   def lexEntry(ler: Resource, lsr: Resource, cfr: Resource)(model: Model) = {

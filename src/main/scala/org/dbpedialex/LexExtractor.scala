@@ -142,7 +142,7 @@ object LexExtractor {
       )
       .map(p => {
         val model = ModelFactory.createDefaultModel()
-        LexUtils.synonyms(p._1, p._2.toSeq, lang, true)(model)
+        LexUtils.synonyms(p._1, p._2.toSeq.map(s => (s, None)), lang, true)(model)
       })
       .map(m => {
         val re = m.getGraph.find().asScala.toSeq
@@ -212,7 +212,7 @@ object LexExtractor {
     val seqs = polysemy
       .flatMap(p => p._1.map(m => (m.toString, p._2)))
       .map(p =>
-        LexUtils.polysemi(p._1, p._2.keys.toSeq, lang)(ModelFactory.createDefaultModel())
+        LexUtils.polysemi(p._1, p._2.toSeq, lang)(ModelFactory.createDefaultModel())
       )
       .extractTriplesSeq
 
@@ -268,7 +268,7 @@ object LexExtractor {
     val seqs = synonyms
       .flatMap(p => p._1.map(m => (m, p._2)))
       .map(p =>
-        LexUtils.synonyms(p._1, p._2.keys.toSeq, lang, false)(ModelFactory.createDefaultModel())
+        LexUtils.synonyms(p._1, p._2.mapValues(Some(_)).toSeq, lang, false)(ModelFactory.createDefaultModel())
       )
       .extractTriplesSeq
 
