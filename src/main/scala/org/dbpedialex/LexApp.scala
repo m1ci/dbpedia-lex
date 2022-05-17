@@ -89,13 +89,16 @@ object LexApp {
       .map(_.trim)
       .filter(_.nonEmpty)
 
-  def initSpark() =
-    SparkSession
+  def initSpark() = {
+    val ss = SparkSession
       .builder
       .config("spark.executor.memory", "4g")
       .config("spark.driver.maxResultSize", "2g")
       .master("local[*]")
       .appName("DBpediaLex")
       .getOrCreate()
+    ss.sparkContext.hadoopConfiguration.set("mapreduce.input.fileinputformat.input.dir.recursive", "true")
+    ss
+  }
 
 }
