@@ -193,15 +193,15 @@ object LexUtils {
     out.toString
   }
 
-  def synonyms(senseLink: String, wordsNFreqs: Seq[(String, Option[Int])], lang: String, replaceBrackets: Boolean)(model: Model) = {
-    val words = filterUnreliable(wordsNFreqs)
+  def synonyms(senseLink: String, wordsNFreqs: Seq[(String, Int)], lang: String, replaceBrackets: Boolean, doFiltering: Boolean)(model: Model) = {
+    val words = if (doFiltering) filterUnreliable(wordsNFreqs) else wordsNFreqs
     val senses = words.map(w => {
       val p = (w._1, model.createResource(ls(lang, w._1, 1)))
       if (replaceBrackets) {
         LexUtils.extractFromFirstBrackets(w._1)
           .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
       }
-      w._2.foreach(addFreqToSense(p._2, _)(model))
+      if (w._2 > 0) addFreqToSense(p._2, w._2)(model)
       p
     }).toMap
     words.map(_._1).foreach(w => {
@@ -216,22 +216,20 @@ object LexUtils {
     model
   }
 
-  def filterUnreliable(wordsNFreq: Seq[(String, Option[Int])]): Seq[(String, Option[Int])] = {
-    val size = wordsNFreq.flatMap(_._2).size
-    if (size > 0) {
-      val sumFreq = wordsNFreq.flatMap(_._2).sum
+  def filterUnreliable(wordsNFreq: Seq[(String, Int)]): Seq[(String, Int)] = {
+    val size = wordsNFreq.size
+    val sumFreq = wordsNFreq.map(_._2).sum
+    if (size > 0 && sumFreq > 0) {
       val averageFreq = sumFreq / size
-        wordsNFreq.filter(_._2 match {
-          case Some(fr) => fr >= averageFreq
-          case None => false
-        })
+      wordsNFreq.filter(_._2 >= averageFreq)
     } else {
       wordsNFreq
     }
   }
 
-  def polysemi(word: String, links: Seq[(String, Int)], lang: String)(model: Model) = {
-    val senses = links.zipWithIndex.map(p => {
+  def polysemi(word: String, links: Seq[(String, Int)], lang: String, doFiltering: Boolean)(model: Model) = {
+    val senses = (if (doFiltering) filterUnreliable(links) else links)
+      .zipWithIndex.map(p => {
       val r = model.createResource(ls(lang, word, p._2 + 1))
       r.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
       r.addProperty(model.createProperty(OntolexReference), model.createResource(p._1._1))

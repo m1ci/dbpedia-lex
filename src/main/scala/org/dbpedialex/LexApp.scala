@@ -14,17 +14,20 @@ object LexApp {
     val disambiguations = getOptionParam("disambiguations_fn")
     val textlinks = getOptionParam("textlinks_fn")
     val outFolder = Paths.get(getParam("output_folder"))
+    val filter = getOptionParam("enable_freq_filter").map(_.toBoolean).getOrElse(false)
     val outRoot = outFolder.resolve(lang)
 
     println(
       s"""
-         |Welcome to Lex App.
+         |Welcome to the Lex App.
          |You specified following config:
+         |lang tag: $lang
          |labels file: $labels
          |redirects file: $redirects
          |disambiguations file: $disambiguations
          |textlinks file: $textlinks
          |output folder: $outFolder
+         |filtering: $filter
          |""".stripMargin
     )
 
@@ -49,7 +52,7 @@ object LexApp {
     }
 
     val links = (redirects, textlinks) match {
-      case (Some(r), Some(w)) => LexExtractor.extractPolysemAndSynonymsFromTextlinks(w, r, outWikilinksPolysem, outTextlinksSyn, lang)(spark)
+      case (Some(r), Some(w)) => LexExtractor.extractPolysemAndSynonymsFromTextlinks(w, r, outWikilinksPolysem, outTextlinksSyn, lang, filter)(spark)
       case _ => Seq.empty
     }
 

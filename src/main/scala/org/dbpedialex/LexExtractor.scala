@@ -142,7 +142,7 @@ object LexExtractor {
       )
       .map(p => {
         val model = ModelFactory.createDefaultModel()
-        LexUtils.synonyms(p._1, p._2.toSeq.map(s => (s, None)), lang, true)(model)
+        LexUtils.synonyms(p._1, p._2.toSeq.map(s => (s, -1)), lang, true, false)(model)
       })
       .map(m => {
         val re = m.getGraph.find().asScala.toSeq
@@ -162,7 +162,7 @@ object LexExtractor {
   }
 
 
-  def extractPolysemAndSynonymsFromTextlinks(textlinksFN: String, redirectsFN: String, outputPolysemFN: String, outputSynonymsFN: String, lang: String)(spark: SparkSession) = {
+  def extractPolysemAndSynonymsFromTextlinks(textlinksFN: String, redirectsFN: String, outputPolysemFN: String, outputSynonymsFN: String, lang: String, doFiltering: Boolean)(spark: SparkSession) = {
     val filters = Set(
       textlinksLink,
       textlinksSf
@@ -182,13 +182,13 @@ object LexExtractor {
       .textFile(redirectsFN)
       .extractTriples(None)
 
-    extractPolysem(groupById, reds, outputPolysemFN, lang)
-    extractSynonyms(groupById, outputSynonymsFN, lang)
+    extractPolysem(groupById, reds, outputPolysemFN, lang, doFiltering)
+    extractSynonyms(groupById, outputSynonymsFN, lang, doFiltering)
     Seq(outputPolysemFN, outputSynonymsFN)
   }
 
 
-  private def extractPolysem(triplesById: RDD[(Node, Iterable[JenaTriple])], redirects: RDD[JenaTriple], outputFN: String, lang: String) = {
+  private def extractPolysem(triplesById: RDD[(Node, Iterable[JenaTriple])], redirects: RDD[JenaTriple], outputFN: String, lang: String, doFiltering: Boolean) = {
     val polysemy = triplesById
       .map(tps => {
         val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
@@ -212,7 +212,7 @@ object LexExtractor {
     val seqs = polysemy
       .flatMap(p => p._1.map(m => (m.toString, p._2)))
       .map(p =>
-        LexUtils.polysemi(p._1, p._2.toSeq, lang)(ModelFactory.createDefaultModel())
+        LexUtils.polysemi(p._1, p._2.toSeq, lang, doFiltering)(ModelFactory.createDefaultModel())
       )
       .extractTriplesSeq
 
@@ -245,7 +245,7 @@ object LexExtractor {
       .union(other)
   }
 
-  private def extractSynonyms(triplesById: RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String) = {
+  private def extractSynonyms(triplesById: RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String, doFiltering: Boolean) = {
     val synonyms = triplesById
       .map(tps => {
         val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
@@ -268,7 +268,7 @@ object LexExtractor {
     val seqs = synonyms
       .flatMap(p => p._1.map(m => (m, p._2)))
       .map(p =>
-        LexUtils.synonyms(p._1, p._2.mapValues(Some(_)).toSeq, lang, false)(ModelFactory.createDefaultModel())
+        LexUtils.synonyms(p._1, p._2.toSeq, lang, false, doFiltering)(ModelFactory.createDefaultModel())
       )
       .extractTriplesSeq
 

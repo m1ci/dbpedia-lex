@@ -15,6 +15,8 @@ ENV REDIRECTS_FILENAME=""
 ENV DISAMBIGUATIONS_FILENAME=""
 ENV TEXTLINKS_FILENAME=""
 
+ENV ENABLE_FILTERING=false
+
 # the var below is private, do not redefine it
 # must be mounted to the folder with the data files on host
 ENV OUT_FOLDER=/data/
@@ -27,4 +29,4 @@ CMD LN=${LABELS_FILENAME:+$OUT_FOLDER$LABELS_FILENAME} && \
     RN=${REDIRECTS_FILENAME:+$OUT_FOLDER$REDIRECTS_FILENAME} && \
     DN=${DISAMBIGUATIONS_FILENAME:+$OUT_FOLDER$DISAMBIGUATIONS_FILENAME} && \
     TN=${TEXTLINKS_FILENAME:+$OUT_FOLDER$WIKILINKS_FILENAME} && \
-    java -Dlang_tag=$LEX_LANG -Dlabels_fn=$LN -Dredirects_fn=$RN -Ddisambiguations_fn=$DN -Dtextlinks_fn=$TN -Doutput_folder=$OUT_FOLDER -cp /app/app.jar org.dbpedialex.LexApp
+    java -Denable_freq_filter=$ENABLE_FILTERING -Dlang_tag=$LEX_LANG -Dlabels_fn=$LN -Dredirects_fn=$RN -Ddisambiguations_fn=$DN -Dtextlinks_fn=$TN -Doutput_folder=$OUT_FOLDER -cp /app/app.jar org.dbpedialex.LexApp
