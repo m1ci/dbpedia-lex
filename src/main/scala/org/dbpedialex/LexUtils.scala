@@ -186,6 +186,7 @@ object LexUtils {
     model.setNsPrefix("lexinfo", LexUtils.LexInfoPrefix)
     model.setNsPrefix("lex", LexUtils.LexPrefix + lang + "/")
     model.setNsPrefix("dct", LexUtils.DctTermsPrefix)
+    model.setNsPrefix("frac", LexUtils.FracPrefix)
     val out = new ByteArrayOutputStream()
     RDFDataMgr.write(out, model.getGraph, Lang.TTL)
     model.close()
