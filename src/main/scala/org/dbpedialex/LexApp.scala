@@ -12,7 +12,7 @@ object LexApp {
     val labels = getOptionParam("labels_fn")
     val redirects = getOptionParam("redirects_fn")
     val disambiguations = getOptionParam("disambiguations_fn")
-    val wikilinks = getOptionParam("wikilinks_fn")
+    val textlinks = getOptionParam("textlinks_fn")
     val outFolder = Paths.get(getParam("output_folder"))
     val outRoot = outFolder.resolve(lang)
 
@@ -23,14 +23,14 @@ object LexApp {
          |labels file: $labels
          |redirects file: $redirects
          |disambiguations file: $disambiguations
-         |wikilinks file: $wikilinks
+         |textlinks file: $textlinks
          |output folder: $outFolder
          |""".stripMargin
     )
 
     val outRedirectsSyn = outRoot.resolve("redirects_syn.nt")
-    val outWikilinksSyn = outRoot.resolve("wikilinks_syn.nt")
-    val outWikilinksPolysem = outRoot.resolve("wikilinks_polysem.nt")
+    val outTextlinksSyn = outRoot.resolve("textlinks_syn.nt")
+    val outWikilinksPolysem = outRoot.resolve("textlinks_polysem.nt")
     val outDisambigPolysem = outRoot.resolve("disambig_polysem.nt")
     val outLexEntrLabels = outRoot.resolve("labels_lex_entries.nt")
 
@@ -48,8 +48,8 @@ object LexApp {
       case _ => Seq.empty
     }
 
-    val links = (redirects, wikilinks) match {
-      case (Some(r), Some(w)) => LexExtractor.extractPolysemAndSynonymsFromWikilinks(w, r, outWikilinksPolysem, outWikilinksSyn, lang)(spark)
+    val links = (redirects, textlinks) match {
+      case (Some(r), Some(w)) => LexExtractor.extractPolysemAndSynonymsFromTextlinks(w, r, outWikilinksPolysem, outTextlinksSyn, lang)(spark)
       case _ => Seq.empty
     }
 

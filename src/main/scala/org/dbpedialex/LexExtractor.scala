@@ -13,8 +13,8 @@ object LexExtractor {
 
   val DebugLimit = -1
 
-  private val wikilinksLink = "http://www.w3.org/2005/11/its/rdf#taIdentRef"
-  private val wikilinksSf = "http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#anchorOf"
+  private val textlinksLink = "http://www.w3.org/2005/11/its/rdf#taIdentRef"
+  private val textlinksSf = "http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#anchorOf"
 
 
   def mergeAllDistinct(files: Seq[String], outFN: String)(spark: SparkSession) =
@@ -162,14 +162,14 @@ object LexExtractor {
   }
 
 
-  def extractPolysemAndSynonymsFromWikilinks(wikilinksFN: String, redirectsFN: String, outputPolysemFN: String, outputSynonymsFN: String, lang: String)(spark: SparkSession) = {
+  def extractPolysemAndSynonymsFromTextlinks(textlinksFN: String, redirectsFN: String, outputPolysemFN: String, outputSynonymsFN: String, lang: String)(spark: SparkSession) = {
     val filters = Set(
-      wikilinksLink,
-      wikilinksSf
+      textlinksLink,
+      textlinksSf
     )
 
     val triples = spark.sparkContext
-      .textFile(wikilinksFN)
+      .textFile(textlinksFN)
       .extractTriples(Some(filterFromSet(filters)))
       .limit(DebugLimit)
 
@@ -191,9 +191,9 @@ object LexExtractor {
   private def extractPolysem(triplesById: RDD[(Node, Iterable[JenaTriple])], redirects: RDD[JenaTriple], outputFN: String, lang: String) = {
     val polysemy = triplesById
       .map(tps => {
-        val li = tps._2.find(_.getPredicate.getURI == wikilinksLink)
+        val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
           .map(_.getObject.getURI)
-        val sfo = tps._2.find(_.getPredicate.getURI == wikilinksSf)
+        val sfo = tps._2.find(_.getPredicate.getURI == textlinksSf)
           .map(_.getObject.getLiteralValue)
         (sfo, li)
       })
@@ -248,9 +248,9 @@ object LexExtractor {
   private def extractSynonyms(triplesById: RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String) = {
     val synonyms = triplesById
       .map(tps => {
-        val li = tps._2.find(_.getPredicate.getURI == wikilinksLink)
+        val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
           .map(_.getObject.getURI)
-        val sfo = tps._2.filter(_.getPredicate.getURI == wikilinksSf)
+        val sfo = tps._2.filter(_.getPredicate.getURI == textlinksSf)
           .map(_.getObject.getLiteralValue).toSeq
         (li, sfo)
       })
