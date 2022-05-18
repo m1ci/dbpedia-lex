@@ -1,6 +1,6 @@
 # Lexical Knowledge bases based on data from Wikipedia
 NOTE! This is a proof of concept project :). \
-The application takes data from [DBpedia](https://www.dbpedia.org) textlinks, labels, disambiguations and redirects, 
+The application takes data from [DBpedia](https://www.dbpedia.org) [textlinks](https://databus.dbpedia.org/dbpedia/text/nif-text-links/), [labels](https://databus.dbpedia.org/dbpedia/generic/labels/), [disambiguations](https://databus.dbpedia.org/dbpedia/generic/disambiguations/) and [redirects](https://databus.dbpedia.org/dbpedia/generic/redirects/), 
 processes it and outputs lexical data in the format of [OntoLex Lemon](https://www.w3.org/2019/09/lexicog/) ontology. 
 
 ## Running in Docker
