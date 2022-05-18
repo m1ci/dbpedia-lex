@@ -40,6 +40,199 @@ object LexUtils {
   val FracCorpus = FracPrefix + "corpus"
   private val FracCorpusValue = "https://databus.dbpedia.org/dbpedia/text/nif-text-links/"
 
+  def synonyms(senseLink: String, wordsNFreqs: Seq[(String, Int)], lang: String, replaceBrackets: Boolean, doFiltering: Boolean)(model: Model) = {
+    val words = if (doFiltering) filterUnreliable(wordsNFreqs) else wordsNFreqs
+    val senses = words.map(w => {
+      val p = (w._1, model.createResource(ls(lang, w._1, 1)))
+      if (replaceBrackets) {
+        LexUtils.extractFromFirstBrackets(w._1)
+          .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
+      }
+      if (w._2 > 0) addFreqToSense(p._2, w._2)(model)
+      p
+    }).toMap
+    words.map(_._1).foreach(w => {
+      val s = if (replaceBrackets) LexUtils.replaceBrackets(w) else w
+      val ler = model.createResource(le(lang, s))
+      val lsr = senses(w)
+      val cfr = model.createResource(cf(lang, s))
+      lexEntry(ler, lsr, cfr)(model)
+      cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(s, lang))
+      synEntry(lsr, (senses - w).values.toSeq, senseLink)(model)
+    })
+    model
+  }
+
+  def polysemi(word: String, links: Seq[(String, Int)], lang: String, doFiltering: Boolean)(model: Model) = {
+    val senses = (if (doFiltering) filterUnreliable(links) else links)
+      .zipWithIndex.map(p => {
+      val r = model.createResource(ls(lang, word, p._2 + 1))
+      r.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
+      r.addProperty(model.createProperty(OntolexReference), model.createResource(p._1._1))
+      addFreqToSense(r, p._1._2)(model)
+    })
+
+    val ler = model.createResource(le(lang, word))
+    val cfr = model.createResource(cf(lang, word))
+
+    ler.addProperty(RDF.`type`, model.createResource(OntolexLexicalEntry))
+    ler.addProperty(model.createProperty(OntolexCanonicalForm), cfr)
+    cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(word, lang))
+    senses.foreach(r => ler.addProperty(model.createProperty(OntolexSense), r))
+    model
+  }
+
+  def polysemiDisambig(word: (String, String), labsNlinks: Seq[(Option[String], String)], lang: String)(model: Model) = {
+    val wordsNlinks = labsNlinks.map(s => (s._1.getOrElse(LexUtils.extractLabelFromIri(s._2)), s._2))
+    val senses = wordsNlinks
+      .map(_._1)
+      .map(w => {
+        val p = (w, model.createResource(ls(lang, w, 1)))
+        LexUtils.extractFromFirstBrackets(w)
+          .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
+        p
+      }).toMap
+    val ler = model.createResource(le(lang, LexUtils.replaceBrackets(word._1)))
+    val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(word._1)))
+
+    ler.addProperty(RDF.`type`, model.createResource(OntolexLexicalEntry))
+    ler.addProperty(model.createProperty(OntolexCanonicalForm), cfr)
+    senses.values.foreach(s => ler.addProperty(model.createProperty(OntolexSense), s))
+    cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word._1), lang))
+
+    wordsNlinks.foreach(p => {
+      val ler = model.createResource(le(lang, LexUtils.replaceBrackets(p._1)))
+      val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(p._1)))
+      val lsr = senses(p._1)
+      LexUtils.lexEntry(ler, lsr, cfr)(model)
+      cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word._1), lang))
+
+      lsr.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
+      lsr.addProperty(model.createProperty(OntolexReference), model.createResource(p._2))
+    })
+
+    model
+  }
+
+  def filterUnreliable(wordsNFreq: Seq[(String, Int)]): Seq[(String, Int)] = {
+    val size = wordsNFreq.size
+    val sumFreq = wordsNFreq.map(_._2).sum
+    if (size > 0 && sumFreq > 0) {
+      val averageFreq = sumFreq / size
+      wordsNFreq.filter(_._2 >= averageFreq)
+    } else {
+      wordsNFreq
+    }
+  }
+
+  def extractLabelFromIri(iri: String): String =
+    URLDecoder
+      .decode(
+        Paths.get(
+          IRIFactory.iriImplementation()
+            .create(iri)
+            .getRawPath
+        ).getFileName.toString,
+        "UTF-8")
+      .replace('_', ' ')
+
+  def replaceBrackets(s: String): String =
+    s.replaceAll(InsideBracketsPattern.toString(), "").trim
+
+  def extractFromFirstBrackets(s: String): Option[String] =
+    InsideBracketsPattern.findFirstMatchIn(s).map(_.group(1))
+
+  def le(lang: String, value: String): String =
+    link(lang, "le", value)
+
+  def cf(lang: String, value: String): String =
+    link(lang, "cf", value)
+
+  def ls(lang: String, value: String, id: Int = 1): String =
+    link(lang, "ls", value + "_sense" + id)
+
+  def parseString(s: String) = {
+    val model = ModelFactory.createDefaultModel
+    RDFParserBuilder.create()
+      .fromString(s)
+      .lang(Lang.NTRIPLES)
+      .build()
+      .parse(model)
+    model
+  }
+
+  def addFreqToSense(sense: Resource, freq: Int)(model: Model): Resource = {
+    val frr = model.createResource()
+    sense.addProperty(model.createProperty(FracFrequency), frr)
+    frr.addProperty(RDF.`type`, model.createResource(FracCorpusFrequency))
+    frr.addProperty(model.createProperty(FracCorpus), model.createResource(FracCorpusValue))
+    frr.addProperty(RDF.value, model.createTypedLiteral(Integer.valueOf(freq)))
+    sense
+  }
+
+  def lexEntry(ler: Resource, lsr: Resource, cfr: Resource)(model: Model) = {
+    ler.addProperty(RDF.`type`, model.createResource(OntolexLexicalEntry))
+    ler.addProperty(model.createProperty(OntolexSense), lsr)
+    ler.addProperty(model.createProperty(OntolexCanonicalForm), cfr)
+    model
+  }
+
+  def synEntry(wordLs: Resource, synsLs: Seq[Resource], link: String)(model: Model) = {
+    wordLs.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
+    synsLs.foreach(se => wordLs.addProperty(model.createProperty(LexInfoSyn), se))
+    wordLs.addProperty(model.createProperty(OntolexReference), model.createResource(link))
+    model
+  }
+
+  def labelTripleToModel(triple: JenaTriple, lang: String): Model = {
+    val word = triple.getObject.getLiteralValue.toString
+    val model = ModelFactory.createDefaultModel()
+    val ler = model.createResource(le(lang, LexUtils.replaceBrackets(word)))
+    val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(word)))
+    val lsr = model.createResource(ls(lang, word, 1))
+    cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word), lang))
+    lsr.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
+    lsr.addProperty(model.createProperty(OntolexReference), model.createResource(triple.getSubject.getURI))
+    LexUtils.extractFromFirstBrackets(word)
+      .foreach(s => lsr.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
+    lexEntry(ler, lsr, cfr)(model)
+  }
+
+  def triplesToRawTtlString(tpls: Seq[JenaTriple], lang: String): String = {
+    val model = ModelFactory.createDefaultModel()
+    tpls.foreach(model.getGraph.add)
+    model.setNsPrefix("ontolex", LexUtils.OntolexPrefix)
+    model.setNsPrefix("lexinfo", LexUtils.LexInfoPrefix)
+    model.setNsPrefix("lex", LexUtils.LexPrefix + lang + "/")
+    model.setNsPrefix("dct", LexUtils.DctTermsPrefix)
+    model.setNsPrefix("frac", LexUtils.FracPrefix)
+    val out = new ByteArrayOutputStream()
+    RDFDataMgr.write(out, model.getGraph, Lang.TTL)
+    model.close()
+    out.toString
+  }
+
+  private[dbpedialex] def link(lang: String, sn: String, value: String): String = {
+    val va = value.replaceAll("\\s", "_")
+    val re = LexPrefix + s"$lang/${sn}_"
+    val full = re + va
+    //todo here we need to properly normalize instead of replacing
+    val iri = IRIFactory.iriImplementation().create(full)
+    if (iri.hasViolation(true)) {
+      val errs = va
+        .toSet
+        .filter(c => IRIFactory.iriImplementation()
+          .create(c.toString)
+          .hasViolation(true)
+        )
+      re + errs.foldLeft(va) {
+        case (s, c) => s.replaceAllLiterally(c.toString, URLEncoder.encode(c.toString, "UTF-8"))
+      }
+    } else {
+      iri.toString
+    }
+  }
+
   object Spark {
 
     implicit def rddStrToTripleExtr(rdd: RDD[String]) = new TripleExtractor(rdd)
@@ -162,201 +355,6 @@ object LexUtils {
 
     }
 
-  }
-
-  def labelTripleToModel(triple: JenaTriple, lang: String): Model = {
-    val word = triple.getObject.getLiteralValue.toString
-    val model = ModelFactory.createDefaultModel()
-    val ler = model.createResource(le(lang, LexUtils.replaceBrackets(word)))
-    val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(word)))
-    val lsr = model.createResource(ls(lang, word, 1))
-    cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word), lang))
-    lsr.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
-    lsr.addProperty(model.createProperty(OntolexReference), model.createResource(triple.getSubject.getURI))
-    LexUtils.extractFromFirstBrackets(word)
-      .foreach(s => lsr.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
-    lexEntry(ler, lsr, cfr)(model)
-  }
-
-
-  def triplesToRawTtlString(tpls: Seq[JenaTriple], lang: String): String = {
-    val model = ModelFactory.createDefaultModel()
-    tpls.foreach(model.getGraph.add)
-    model.setNsPrefix("ontolex", LexUtils.OntolexPrefix)
-    model.setNsPrefix("lexinfo", LexUtils.LexInfoPrefix)
-    model.setNsPrefix("lex", LexUtils.LexPrefix + lang + "/")
-    model.setNsPrefix("dct", LexUtils.DctTermsPrefix)
-    model.setNsPrefix("frac", LexUtils.FracPrefix)
-    val out = new ByteArrayOutputStream()
-    RDFDataMgr.write(out, model.getGraph, Lang.TTL)
-    model.close()
-    out.toString
-  }
-
-  def synonyms(senseLink: String, wordsNFreqs: Seq[(String, Int)], lang: String, replaceBrackets: Boolean, doFiltering: Boolean)(model: Model) = {
-    val words = if (doFiltering) filterUnreliable(wordsNFreqs) else wordsNFreqs
-    val senses = words.map(w => {
-      val p = (w._1, model.createResource(ls(lang, w._1, 1)))
-      if (replaceBrackets) {
-        LexUtils.extractFromFirstBrackets(w._1)
-          .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
-      }
-      if (w._2 > 0) addFreqToSense(p._2, w._2)(model)
-      p
-    }).toMap
-    words.map(_._1).foreach(w => {
-      val s = if (replaceBrackets) LexUtils.replaceBrackets(w) else w
-      val ler = model.createResource(le(lang, s))
-      val lsr = senses(w)
-      val cfr = model.createResource(cf(lang, s))
-      lexEntry(ler, lsr, cfr)(model)
-      cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(s, lang))
-      synEntry(lsr, (senses - w).values.toSeq, senseLink)(model)
-    })
-    model
-  }
-
-  def filterUnreliable(wordsNFreq: Seq[(String, Int)]): Seq[(String, Int)] = {
-    val size = wordsNFreq.size
-    val sumFreq = wordsNFreq.map(_._2).sum
-    if (size > 0 && sumFreq > 0) {
-      val averageFreq = sumFreq / size
-      wordsNFreq.filter(_._2 >= averageFreq)
-    } else {
-      wordsNFreq
-    }
-  }
-
-  def polysemi(word: String, links: Seq[(String, Int)], lang: String, doFiltering: Boolean)(model: Model) = {
-    val senses = (if (doFiltering) filterUnreliable(links) else links)
-      .zipWithIndex.map(p => {
-      val r = model.createResource(ls(lang, word, p._2 + 1))
-      r.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
-      r.addProperty(model.createProperty(OntolexReference), model.createResource(p._1._1))
-      addFreqToSense(r, p._1._2)(model)
-    })
-
-    val ler = model.createResource(le(lang, word))
-    val cfr = model.createResource(cf(lang, word))
-
-    ler.addProperty(RDF.`type`, model.createResource(OntolexLexicalEntry))
-    ler.addProperty(model.createProperty(OntolexCanonicalForm), cfr)
-    cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(word, lang))
-    senses.foreach(r => ler.addProperty(model.createProperty(OntolexSense), r))
-    model
-  }
-
-  def extractLabelFromIri(iri: String): String =
-    URLDecoder
-      .decode(
-        Paths.get(
-          IRIFactory.iriImplementation()
-            .create(iri)
-            .getRawPath
-        ).getFileName.toString,
-        "UTF-8")
-      .replace('_', ' ')
-
-  def replaceBrackets(s: String): String =
-    s.replaceAll(InsideBracketsPattern.toString(), "").trim
-
-
-  def extractFromFirstBrackets(s: String): Option[String] =
-    InsideBracketsPattern.findFirstMatchIn(s).map(_.group(1))
-
-  def polysemiDisambig(word: (String, String), labsNlinks: Seq[(Option[String], String)], lang: String)(model: Model) = {
-    val wordsNlinks = labsNlinks.map(s => (s._1.getOrElse(LexUtils.extractLabelFromIri(s._2)), s._2))
-    val senses = wordsNlinks
-      .map(_._1)
-      .map(w => {
-        val p = (w, model.createResource(ls(lang, w, 1)))
-        LexUtils.extractFromFirstBrackets(w)
-          .foreach(s => p._2.addProperty(model.createProperty(DctSubject), model.createLiteral(s, lang)))
-        p
-      }).toMap
-    val ler = model.createResource(le(lang, LexUtils.replaceBrackets(word._1)))
-    val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(word._1)))
-
-    ler.addProperty(RDF.`type`, model.createResource(OntolexLexicalEntry))
-    ler.addProperty(model.createProperty(OntolexCanonicalForm), cfr)
-    senses.values.foreach(s => ler.addProperty(model.createProperty(OntolexSense), s))
-    cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word._1), lang))
-
-    wordsNlinks.foreach(p => {
-      val ler = model.createResource(le(lang, LexUtils.replaceBrackets(p._1)))
-      val cfr = model.createResource(cf(lang, LexUtils.replaceBrackets(p._1)))
-      val lsr = senses(p._1)
-      LexUtils.lexEntry(ler, lsr, cfr)(model)
-      cfr.addProperty(model.createProperty(OntolexWrittenRep), model.createLiteral(LexUtils.replaceBrackets(word._1), lang))
-
-      lsr.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
-      lsr.addProperty(model.createProperty(OntolexReference), model.createResource(p._2))
-    })
-
-    model
-  }
-
-  def le(lang: String, value: String): String =
-    link(lang, "le", value)
-
-  def cf(lang: String, value: String): String =
-    link(lang, "cf", value)
-
-  def ls(lang: String, value: String, id: Int = 1): String =
-    link(lang, "ls", value + "_sense" + id)
-
-  def parseString(s: String) = {
-    val model = ModelFactory.createDefaultModel
-    RDFParserBuilder.create()
-      .fromString(s)
-      .lang(Lang.NTRIPLES)
-      .build()
-      .parse(model)
-    model
-  }
-
-  def addFreqToSense(sense: Resource, freq: Int)(model: Model): Resource = {
-    val frr = model.createResource()
-    sense.addProperty(model.createProperty(FracFrequency), frr)
-    frr.addProperty(RDF.`type`, model.createResource(FracCorpusFrequency))
-    frr.addProperty(model.createProperty(FracCorpus), model.createResource(FracCorpusValue))
-    frr.addProperty(RDF.value, model.createTypedLiteral(Integer.valueOf(freq)))
-    sense
-  }
-
-  def lexEntry(ler: Resource, lsr: Resource, cfr: Resource)(model: Model) = {
-    ler.addProperty(RDF.`type`, model.createResource(OntolexLexicalEntry))
-    ler.addProperty(model.createProperty(OntolexSense), lsr)
-    ler.addProperty(model.createProperty(OntolexCanonicalForm), cfr)
-    model
-  }
-
-  def synEntry(wordLs: Resource, synsLs: Seq[Resource], link: String)(model: Model) = {
-    wordLs.addProperty(RDF.`type`, model.createResource(OntolexLexicalSense))
-    synsLs.foreach(se => wordLs.addProperty(model.createProperty(LexInfoSyn), se))
-    wordLs.addProperty(model.createProperty(OntolexReference), model.createResource(link))
-    model
-  }
-
-  private[dbpedialex] def link(lang: String, sn: String, value: String): String = {
-    val va = value.replaceAll("\\s", "_")
-    val re = LexPrefix + s"$lang/${sn}_"
-    val full = re + va
-    //todo here we need to properly normalize instead of replacing
-    val iri = IRIFactory.iriImplementation().create(full)
-    if (iri.hasViolation(true)) {
-      val errs = va
-        .toSet
-        .filter(c => IRIFactory.iriImplementation()
-          .create(c.toString)
-          .hasViolation(true)
-        )
-      re + errs.foldLeft(va) {
-        case (s, c) => s.replaceAllLiterally(c.toString, URLEncoder.encode(c.toString, "UTF-8"))
-      }
-    } else {
-      iri.toString
-    }
   }
 
 }

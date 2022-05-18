@@ -7,11 +7,7 @@ import org.apache.jena.graph.Node
 import org.apache.spark.rdd.RDD
 import org.apache.jena.graph.{Triple => JenaTriple}
 
-import scala.collection.JavaConverters._
-
 object LexExtractor {
-
-  val DebugLimit = -1
 
   private val textlinksLink = "http://www.w3.org/2005/11/its/rdf#taIdentRef"
   private val textlinksSf = "http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#anchorOf"
@@ -25,20 +21,12 @@ object LexExtractor {
       .saveToFile(outFN)
 
   def extractLexEntriesFromLabels(labelsFN: String, outputFN: String, lang: String)(spark: SparkSession) = {
-    val triples = spark
+    spark
       .sparkContext
       .textFile(labelsFN)
       .extractTriples(None)
-      .limit(DebugLimit)
-
-    val seqs = triples
       .map(LexUtils.labelTripleToModel(_, lang))
-      .extractTriplesSeq
-    seqs
-      .filter(tps => tps.exists(t => t.getSubject.getURI.contains(LexUtils.LexPrefix + lang + "/ls") && t.getSubject.getURI.contains("(")))
-      .printOne("mk", Some("labels"))
-
-    seqs.flatMap(s => s)
+      .extractSingleTripes
       .saveToNTriplesFile(outputFN)
     outputFN
   }
@@ -51,18 +39,13 @@ object LexExtractor {
     val trpls = spark.sparkContext
       .textFile(disambigFN)
       .extractTriples(Some(filterFromSet(filters)))
-      .limit(DebugLimit)
 
-    val labTriples = spark.sparkContext
+    val labels = spark.sparkContext
       .textFile(labelsFN)
       .extractTriples(None)
-
-    trpls.printFirstN(10)
-
-    val labels = labTriples
       .map(t => (t.getSubject.getURI, t))
 
-    val rs = trpls
+    trpls
       .map(t => (t.getSubject.getURI, t))
       .join(labels)
       .map(r => {
@@ -76,10 +59,6 @@ object LexExtractor {
       })
       .groupBy(_._2.getSubject.getURI)
       .map(_._2)
-
-    rs.printFirstN(10)
-
-    val ds = rs
       .map(dt =>
         (
           (dt.head._1, dt.head._2.getSubject.getURI),
@@ -87,15 +66,7 @@ object LexExtractor {
         )
       )
       .map(m => LexUtils.polysemiDisambig(m._1, m._2.toSeq, lang)(ModelFactory.createDefaultModel()))
-      .extractTriplesSeq
-
-    ds
-      .filter(tps => tps.count(_.getObject.toString.contains("LexicalEntry")) == 4)
-      .filter(tps => tps.exists(t => t.getSubject.getURI.contains(LexUtils.LexPrefix + lang + "/ls") && t.getSubject.getURI.contains("(")))
-      .printOne(lang, Some("disambig"))
-
-    ds
-      .flatMap(a => a)
+      .extractSingleTripes
       .saveToNTriplesFile(outputFN)
     outputFN
   }
@@ -104,22 +75,13 @@ object LexExtractor {
     val redTriples = spark.sparkContext
       .textFile(redirectsFN)
       .extractTriples(None)
-      .limit(DebugLimit)
 
-    val labTriples = spark.sparkContext
+    val labels = spark.sparkContext
       .textFile(labelsFN)
       .extractTriples(None)
-
-    redTriples
-      .printFirstN(10)
-
-    labTriples
-      .printFirstN(10)
-
-    val labels = labTriples
       .map(t => (t.getSubject.getURI, t))
 
-    val rs = redTriples
+    redTriples
       .map(t => (t.getSubject.getURI, t))
       .join(labels)
       .map(r => {
@@ -132,11 +94,7 @@ object LexExtractor {
         (r._2._1._1, r._2._1._2, obj_label)
       })
       .groupBy(_._2.getObject.getURI)
-      .map(r => {
-        r._2
-      })
-
-    val models = rs
+      .map(_._2)
       .map(p =>
         (p.head._2.getObject.getURI, p.map(_._1) ++ Seq(p.head._3))
       )
@@ -144,19 +102,7 @@ object LexExtractor {
         val model = ModelFactory.createDefaultModel()
         LexUtils.synonyms(p._1, p._2.toSeq.map(s => (s, -1)), lang, true, false)(model)
       })
-      .map(m => {
-        val re = m.getGraph.find().asScala.toSeq
-        m.close()
-        re
-      })
-
-    models
-      .filter(tps => tps.count(_.getObject.toString.contains("LexicalEntry")) == 3)
-      .filter(tps => tps.exists(t => t.getSubject.getURI.contains(LexUtils.LexPrefix + lang + "/ls") && t.getSubject.getURI.contains("(")))
-      .printOne(lang, Some("redirects"))
-
-    models
-      .flatMap(a => a)
+      .extractSingleTripes
       .saveToNTriplesFile(outputFN)
     outputFN
   }
@@ -171,9 +117,6 @@ object LexExtractor {
     val triples = spark.sparkContext
       .textFile(textlinksFN)
       .extractTriples(Some(filterFromSet(filters)))
-      .limit(DebugLimit)
-
-    triples.printFirstN(100)
 
     val groupById = triples
       .groupBy(_.getSubject)
@@ -189,7 +132,7 @@ object LexExtractor {
 
 
   private def extractPolysem(triplesById: RDD[(Node, Iterable[JenaTriple])], redirects: RDD[JenaTriple], outputFN: String, lang: String, doFiltering: Boolean) = {
-    val polysemy = triplesById
+    val seqs = triplesById
       .map(tps => {
         val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
           .map(_.getObject.getURI)
@@ -205,24 +148,14 @@ object LexExtractor {
         )
       })
       .sortBy(_._2.size, ascending = false)
-
-    polysemy
-      .printFirstN(10)
-
-    val seqs = polysemy
       .flatMap(p => p._1.map(m => (m.toString, p._2)))
       .map(p =>
         LexUtils.polysemi(p._1, p._2.toSeq, lang, doFiltering)(ModelFactory.createDefaultModel())
       )
-      .extractTriplesSeq
-
-    seqs
-      .filter(tps => tps.count(_.getObject.toString.contains("LexicalSense")) > 3 && tps.count(_.getObject.toString.contains("LexicalSense")) < 10)
-      .printOne(lang, Some("polysem_links"))
+      .extractSingleTripes
 
     replaceWithRedirects(
-      seqs
-        .flatMap(s => s),
+      seqs,
       redirects
     ).saveToNTriplesFile(outputFN)
     outputFN
@@ -246,7 +179,7 @@ object LexExtractor {
   }
 
   private def extractSynonyms(triplesById: RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String, doFiltering: Boolean) = {
-    val synonyms = triplesById
+    triplesById
       .map(tps => {
         val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
           .map(_.getObject.getURI)
@@ -261,23 +194,11 @@ object LexExtractor {
           .map(p => (p._1, p._2.size)))
       })
       .sortBy(_._2.size, ascending = false)
-
-    synonyms
-      .printFirstN(10)
-
-    val seqs = synonyms
       .flatMap(p => p._1.map(m => (m, p._2)))
       .map(p =>
         LexUtils.synonyms(p._1, p._2.toSeq, lang, false, doFiltering)(ModelFactory.createDefaultModel())
       )
-      .extractTriplesSeq
-
-    seqs
-      .filter(tps => tps.count(_.getObject.toString.contains("LexicalEntry")) > 3 && tps.count(_.getObject.toString.contains("LexicalEntry")) < 10)
-      .printOne(lang, Some("synon_links"))
-
-    seqs
-      .flatMap(s => s)
+      .extractSingleTripes
       .saveToNTriplesFile(outputFN)
     outputFN
   }
