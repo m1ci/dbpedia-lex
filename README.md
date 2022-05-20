@@ -26,3 +26,29 @@ docker run -v <folder with the data on host>:/data/ -e LEX_LANG=<language tag> -
 ```
 
 The results will be output in N-Triples format in the mounted data folder under the language tag, i.e `/data/mk/`. 
+
+## Examples of input data and output models
+### labels
+
+Input:
+```
+<http://mk.dbpedia.org/resource/Бенцов_автомобил> <http://www.w3.org/2000/01/rdf-schema#label> "Бенцов автомобил"@mk .
+```
+
+Output RDF graph:
+```
+lex:ls_Бенцов_автомобил_sense1
+        a                  ontolex:LexicalSense ;
+        ontolex:reference  <http://mk.dbpedia.org/resource/Бенцов_автомобил> .
+
+lex:le_Бенцов_автомобил
+        a                      ontolex:LexicalEntry ;
+        ontolex:canonicalForm  lex:cf_Бенцов_автомобил ;
+        ontolex:sense          lex:ls_Бенцов_автомобил_sense1 .
+
+lex:cf_Бенцов_автомобил
+        ontolex:writtenRep  "Бенцов автомобил"@mk .
+```
+
+
+
