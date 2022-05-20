@@ -28,7 +28,16 @@ docker run -v <folder with the data on host>:/data/ -e LEX_LANG=<language tag> -
 The results will be output in N-Triples format in the mounted data folder under the language tag, i.e `/data/mk/`. 
 
 ## Examples of input data and output models
-### labels
+The following prefixes were used in all the outputs:
+```
+@prefix dct:   <http://purl.org/dc/terms/> .
+@prefix ontolex: <http://www.w3.org/ns/lemon/ontolex#> .
+@prefix lexinfo: <http://www.lexinfo.net/ontology/2.0/lexinfo#> .
+@prefix lex:   <https://dbpedia.org/lex/mk/> .
+@prefix frac:  <http://www.w3.org/nl/lemon/frac#> .
+```
+
+### Labels
 
 Input:
 ```
