@@ -62,6 +62,7 @@ Input:
 <http://mk.dbpedia.org/resource/Адвентисти?dbpv=2020-02&nif=word&char=3531,3535> <http://www.w3.org/2005/11/its/rdf#taIdentRef> <http://mk.dbpedia.org/resource/1844> .
 <http://mk.dbpedia.org/resource/Адвентисти?dbpv=2020-02&nif=word&char=3531,3535> <http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#anchorOf> "1844" .
 ```
+
 #### Synonyms
 
 Output RDF:
@@ -97,33 +98,39 @@ lex:le_БМВ  a                  ontolex:LexicalEntry ;
         ontolex:sense          lex:ls_БМВ_sense1 .
 ```
 
-#### Polysematic words
+#### Polysemantic words
 
 Output RDF:
 ```
-lex:ls_David_Bowie_sense2
-        a                  ontolex:LexicalSense ;
+lex:cf_житата  ontolex:writtenRep  "житата"@mk .
+
+lex:le_житата  a               ontolex:LexicalEntry ;
+        ontolex:canonicalForm  lex:cf_житата ;
+        ontolex:sense          lex:ls_житата_sense1 , lex:ls_житата_sense2 , lex:ls_житата_sense3 .
+
+lex:ls_житата_sense3  a    ontolex:LexicalSense ;
+        frac:frequency     [ a            frac:CorpusFrequency ;
+                             <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
+                                     "3"^^<http://www.w3.org/2001/XMLSchema#int> ;
+                             frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
+                           ] ;
+        ontolex:reference  <http://mk.dbpedia.org/resource/Жито> .
+
+lex:ls_житата_sense1  a    ontolex:LexicalSense ;
         frac:frequency     [ a            frac:CorpusFrequency ;
                              <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
                                      "1"^^<http://www.w3.org/2001/XMLSchema#int> ;
                              frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
                            ] ;
-        ontolex:reference  <http://tcmdb.com/participant/participant.jsp%3FparticipantId=20269> .
+        ontolex:reference  <http://mk.dbpedia.org/resource/Житарица> .
 
-lex:le_David_Bowie  a          ontolex:LexicalEntry ;
-        ontolex:canonicalForm  lex:cf_David_Bowie ;
-        ontolex:sense          lex:ls_David_Bowie_sense1 , lex:ls_David_Bowie_sense2 .
-
-lex:ls_David_Bowie_sense1
-        a                  ontolex:LexicalSense ;
+lex:ls_житата_sense2  a    ontolex:LexicalSense ;
         frac:frequency     [ a            frac:CorpusFrequency ;
                              <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
                                      "1"^^<http://www.w3.org/2001/XMLSchema#int> ;
                              frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
                            ] ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Дејвид_Боуви> .
-
-lex:cf_David_Bowie  ontolex:writtenRep  "David Bowie"@mk .
+        ontolex:reference  <http://mk.dbpedia.org/resource/Житни_култури> .
 ```
 ### Labels
 
