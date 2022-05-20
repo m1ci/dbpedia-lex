@@ -1,6 +1,6 @@
 package org.dbpedialex
 
-import org.apache.jena.rdf.model.ModelFactory
+import org.apache.jena.rdf.model.{Model, ModelFactory}
 import org.apache.spark.sql.SparkSession
 import LexUtils.Spark._
 import org.apache.jena.graph.Node
@@ -9,8 +9,8 @@ import org.apache.jena.graph.{Triple => JenaTriple}
 
 object LexExtractor {
 
-  private val textlinksLink = "http://www.w3.org/2005/11/its/rdf#taIdentRef"
-  private val textlinksSf = "http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#anchorOf"
+  private[dbpedialex] val textlinksLink = "http://www.w3.org/2005/11/its/rdf#taIdentRef"
+  private[dbpedialex] val textlinksSf = "http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#anchorOf"
 
 
   def mergeAllDistinct(files: Seq[String], outFN: String)(spark: SparkSession) =
@@ -43,22 +43,8 @@ object LexExtractor {
     val labels = spark.sparkContext
       .textFile(labelsFN)
       .extractTriples(None)
-      .map(t => (t.getSubject.getURI, t))
 
-    trpls
-      .map(t => (t.getSubject.getURI, t))
-      .join(labels)
-      .map(r => {
-        val subj_label = r._2._2.getObject.getLiteralValue.toString
-        (r._2._1.getObject.getURI, (subj_label, r._2._1))
-      })
-      .leftOuterJoin(labels)
-      .map(r => {
-        val obj_label = r._2._2.map(_.getObject.getLiteralValue.toString)
-        (r._2._1._1, r._2._1._2, obj_label)
-      })
-      .groupBy(_._2.getSubject.getURI)
-      .map(_._2)
+    polysemDisambigGroupedTriples(trpls, labels)
       .map(dt =>
         (
           (dt.head._1, dt.head._2.getSubject.getURI),
@@ -71,6 +57,24 @@ object LexExtractor {
     outputFN
   }
 
+  def polysemDisambigGroupedTriples(disambig: RDD[JenaTriple], labels: RDD[JenaTriple]): RDD[Iterable[(String, JenaTriple, Option[String])]] = {
+    val labJoin = labels.keyBy(_.getSubject.getURI)
+    disambig
+      .map(t => (t.getSubject.getURI, t))
+      .join(labJoin)
+      .map(r => {
+        val subj_label = r._2._2.getObject.getLiteralValue.toString
+        (r._2._1.getObject.getURI, (subj_label, r._2._1))
+      })
+      .leftOuterJoin(labJoin)
+      .map(r => {
+        val obj_label = r._2._2.map(_.getObject.getLiteralValue.toString)
+        (r._2._1._1, r._2._1._2, obj_label)
+      })
+      .groupBy(_._2.getSubject.getURI)
+      .map(_._2)
+  }
+
   def extractSynonymsFromRedirects(redirectsFN: String, labelsFN: String, outputFN: String, lang: String)(spark: SparkSession) = {
     val redTriples = spark.sparkContext
       .textFile(redirectsFN)
@@ -79,32 +83,35 @@ object LexExtractor {
     val labels = spark.sparkContext
       .textFile(labelsFN)
       .extractTriples(None)
-      .map(t => (t.getSubject.getURI, t))
 
-    redTriples
-      .map(t => (t.getSubject.getURI, t))
-      .join(labels)
+    synsFromTriplesForRedirects(redTriples, labels)
+      .map(p =>
+        (p.head._2.getObject.getURI, p.map(_._1) ++ Seq(p.head._3))
+      )
+      .map(p =>
+        LexUtils.synonyms(p._1, p._2.toSeq.map(s => (s, -1)), lang, true, false)(ModelFactory.createDefaultModel())
+      )
+      .extractSingleTripes
+      .saveToNTriplesFile(outputFN)
+    outputFN
+  }
+
+  def synsFromTriplesForRedirects(redirects: RDD[JenaTriple], labels: RDD[JenaTriple]): RDD[Iterable[(String, JenaTriple, String)]] = {
+    val labs = labels.keyBy(_.getSubject.getURI)
+    redirects
+      .keyBy(_.getSubject.getURI)
+      .join(labs)
       .map(r => {
         val subj_label = r._2._2.getObject.getLiteralValue.toString
         (r._2._1.getObject.toString, (subj_label, r._2._1))
       })
-      .join(labels)
+      .join(labs)
       .map(r => {
         val obj_label = r._2._2.getObject.getLiteralValue.toString
         (r._2._1._1, r._2._1._2, obj_label)
       })
       .groupBy(_._2.getObject.getURI)
       .map(_._2)
-      .map(p =>
-        (p.head._2.getObject.getURI, p.map(_._1) ++ Seq(p.head._3))
-      )
-      .map(p => {
-        val model = ModelFactory.createDefaultModel()
-        LexUtils.synonyms(p._1, p._2.toSeq.map(s => (s, -1)), lang, true, false)(model)
-      })
-      .extractSingleTripes
-      .saveToNTriplesFile(outputFN)
-    outputFN
   }
 
 
@@ -114,30 +121,28 @@ object LexExtractor {
       textlinksSf
     )
 
-    val triples = spark.sparkContext
+    val triplesGrouped = spark.sparkContext
       .textFile(textlinksFN)
       .extractTriples(Some(filterFromSet(filters)))
-
-    val groupById = triples
       .groupBy(_.getSubject)
 
     val reds = spark.sparkContext
       .textFile(redirectsFN)
       .extractTriples(None)
 
-    extractPolysem(groupById, reds, outputPolysemFN, lang, doFiltering)
-    extractSynonyms(groupById, outputSynonymsFN, lang, doFiltering)
+    extractPolysem(triplesGrouped, reds, outputPolysemFN, lang, doFiltering)
+    extractSynonyms(triplesGrouped, outputSynonymsFN, lang, doFiltering)
     Seq(outputPolysemFN, outputSynonymsFN)
   }
 
-
-  private def extractPolysem(triplesById: RDD[(Node, Iterable[JenaTriple])], redirects: RDD[JenaTriple], outputFN: String, lang: String, doFiltering: Boolean) = {
-    val seqs = triplesById
+  def polySemModelsFromTriples(tpls: RDD[Iterable[JenaTriple]], lang: String, filter: Boolean): RDD[Model] = {
+    tpls
       .map(tps => {
-        val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
+        val li = tps.find(_.getPredicate.getURI == textlinksLink)
           .map(_.getObject.getURI)
-        val sfo = tps._2.find(_.getPredicate.getURI == textlinksSf)
+        val sfo = tps.find(_.getPredicate.getURI == textlinksSf)
           .map(_.getObject.getLiteralValue)
+        // here the order in the tuple matters!
         (sfo, li)
       })
       .groupBy(_._1)
@@ -147,13 +152,38 @@ object LexExtractor {
           .map(p => (p._1, p._2.size))
         )
       })
-      .sortBy(_._2.size, ascending = false)
       .flatMap(p => p._1.map(m => (m.toString, p._2)))
       .map(p =>
-        LexUtils.polysemi(p._1, p._2.toSeq, lang, doFiltering)(ModelFactory.createDefaultModel())
+        LexUtils.polysemi(p._1, p._2.toSeq, lang, filter)(ModelFactory.createDefaultModel())
       )
-      .extractSingleTripes
+  }
 
+  def synonymModelsFromTriples(tpls: RDD[Iterable[JenaTriple]], lang: String, filter: Boolean): RDD[Model] = {
+    tpls
+      .map(tps => {
+        val li = tps.find(_.getPredicate.getURI == textlinksLink)
+          .map(_.getObject.getURI)
+        val sfo = tps.filter(_.getPredicate.getURI == textlinksSf)
+          .map(_.getObject.getLiteralValue).toSeq
+        // here the order in the tuple matters!
+        (li, sfo)
+      })
+      .groupBy(_._1)
+      .map(gp => {
+        (gp._1, gp._2.flatMap(_._2)
+          .groupBy(_.toString)
+          .map(p => (p._1, p._2.size)))
+      })
+      .flatMap(p => p._1.map(m => (m, p._2)))
+      .map(p =>
+        LexUtils.synonyms(p._1, p._2.toSeq, lang, false, filter)(ModelFactory.createDefaultModel())
+      )
+  }
+
+
+  private def extractPolysem(triplesById: RDD[(Node, Iterable[JenaTriple])], redirects: RDD[JenaTriple], outputFN: String, lang: String, doFiltering: Boolean) = {
+    val seqs = polySemModelsFromTriples(triplesById.map(_._2), lang, doFiltering)
+      .extractSingleTripes
     replaceWithRedirects(
       seqs,
       redirects
@@ -179,31 +209,14 @@ object LexExtractor {
   }
 
   private def extractSynonyms(triplesById: RDD[(Node, Iterable[JenaTriple])], outputFN: String, lang: String, doFiltering: Boolean) = {
-    triplesById
-      .map(tps => {
-        val li = tps._2.find(_.getPredicate.getURI == textlinksLink)
-          .map(_.getObject.getURI)
-        val sfo = tps._2.filter(_.getPredicate.getURI == textlinksSf)
-          .map(_.getObject.getLiteralValue).toSeq
-        (li, sfo)
-      })
-      .groupBy(_._1)
-      .map(gp => {
-        (gp._1, gp._2.flatMap(_._2)
-          .groupBy(_.toString)
-          .map(p => (p._1, p._2.size)))
-      })
-      .sortBy(_._2.size, ascending = false)
-      .flatMap(p => p._1.map(m => (m, p._2)))
-      .map(p =>
-        LexUtils.synonyms(p._1, p._2.toSeq, lang, false, doFiltering)(ModelFactory.createDefaultModel())
-      )
+    synonymModelsFromTriples(triplesById
+      .map(_._2), lang, doFiltering)
       .extractSingleTripes
       .saveToNTriplesFile(outputFN)
     outputFN
   }
 
-  private def filterFromSet(takeOnlyContaining: Set[String]): String => Boolean =
+  private[dbpedialex] def filterFromSet(takeOnlyContaining: Set[String]): String => Boolean =
     (s: String) => takeOnlyContaining.exists(s.contains)
 
 

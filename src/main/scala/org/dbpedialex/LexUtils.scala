@@ -212,6 +212,15 @@ object LexUtils {
     out.toString
   }
 
+  def triplesToNTriples(tpls: Seq[JenaTriple]): String = {
+    val model = ModelFactory.createDefaultModel()
+    tpls.foreach(model.getGraph.add)
+    val out = new ByteArrayOutputStream()
+    RDFDataMgr.write(out, model.getGraph, Lang.NTRIPLES)
+    model.close()
+    out.toString
+  }
+
   private[dbpedialex] def link(lang: String, sn: String, value: String): String = {
     val va = value.replaceAll("\\s", "_")
     val re = LexPrefix + s"$lang/${sn}_"
@@ -239,7 +248,7 @@ object LexUtils {
 
     implicit def rddTripleToTripleProc(rdd: RDD[JenaTriple]) = new TripleProcessor(rdd)
 
-    implicit def rddTSeqToTripleSeqProc(rdd: RDD[Seq[JenaTriple]]) = new TripleSeqProcessor(rdd)
+    implicit def rddTSeqToTripleSeqProc[T <: Iterable[JenaTriple]](rdd: RDD[T]) = new TripleSeqProcessor(rdd)
 
     implicit def rddToAnyProc[T](rdd: RDD[T]) = new AnyProcessor[T](rdd)
 
@@ -342,11 +351,11 @@ object LexUtils {
       }
     }
 
-    class TripleSeqProcessor(rdd: RDD[Seq[JenaTriple]]) {
+    class TripleSeqProcessor[T <: Iterable[JenaTriple]](rdd: RDD[T]) {
 
       def printOne(lang: String, lbl: Option[String] = None) =
         rdd
-          .map(LexUtils.triplesToRawTtlString(_, lang))
+          .map(a => LexUtils.triplesToRawTtlString(a.toSeq, lang))
           .take(1)
           .foreach(m => {
             println(s"Model for $lbl list of triples: ")
