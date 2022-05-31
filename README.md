@@ -35,6 +35,9 @@ The following prefixes were used in all the outputs:
 @prefix lexinfo: <http://www.lexinfo.net/ontology/2.0/lexinfo#> .
 @prefix lex:   <https://dbpedia.org/lex/mk/> .
 @prefix frac:  <http://www.w3.org/nl/lemon/frac#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix dbr: <http://mk.dbpedia.org/resource/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 ```
 
 ### Textlinks
@@ -74,11 +77,10 @@ lex:cf_BMW  ontolex:writtenRep  "BMW"@mk .
 lex:ls_BMW_sense1  a       ontolex:LexicalSense ;
         lexinfo:synonym    lex:ls_БМВ_sense1 ;
         frac:frequency     [ a            frac:CorpusFrequency ;
-                             <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
-                                     "1"^^<http://www.w3.org/2001/XMLSchema#int> ;
+                             rdf:value    "1"^^xsd:int ;
                              frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
                            ] ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/БМВ> .
+        ontolex:reference  dbr:БМВ .
 
 lex:le_BMW  a                  ontolex:LexicalEntry ;
         ontolex:canonicalForm  lex:cf_BMW ;
@@ -87,11 +89,10 @@ lex:le_BMW  a                  ontolex:LexicalEntry ;
 lex:ls_БМВ_sense1  a       ontolex:LexicalSense ;
         lexinfo:synonym    lex:ls_BMW_sense1 ;
         frac:frequency     [ a            frac:CorpusFrequency ;
-                             <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
-                                     "18"^^<http://www.w3.org/2001/XMLSchema#int> ;
+                             rdf:value    "18"^^xsd:int ;
                              frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
                            ] ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/БМВ> .
+        ontolex:reference  dbr:БМВ .
 
 lex:le_БМВ  a                  ontolex:LexicalEntry ;
         ontolex:canonicalForm  lex:cf_БМВ ;
@@ -110,27 +111,24 @@ lex:le_житата  a               ontolex:LexicalEntry ;
 
 lex:ls_житата_sense3  a    ontolex:LexicalSense ;
         frac:frequency     [ a            frac:CorpusFrequency ;
-                             <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
-                                     "3"^^<http://www.w3.org/2001/XMLSchema#int> ;
+                             rdf:value    "3"^^xsd:int ;
                              frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
                            ] ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Жито> .
+        ontolex:reference  dbr:Жито .
 
 lex:ls_житата_sense1  a    ontolex:LexicalSense ;
         frac:frequency     [ a            frac:CorpusFrequency ;
-                             <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
-                                     "1"^^<http://www.w3.org/2001/XMLSchema#int> ;
+                             rdf:value    "1"^^xsd:int ;
                              frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
                            ] ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Житарица> .
+        ontolex:reference  dbr:Житарица .
 
 lex:ls_житата_sense2  a    ontolex:LexicalSense ;
         frac:frequency     [ a            frac:CorpusFrequency ;
-                             <http://www.w3.org/1999/02/22-rdf-syntax-ns#value>
-                                     "1"^^<http://www.w3.org/2001/XMLSchema#int> ;
+                             rdf:value    "1"^^xsd:int ;
                              frac:corpus  <https://databus.dbpedia.org/dbpedia/text/nif-text-links/>
                            ] ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Житни_култури> .
+        ontolex:reference  dbr:Житни_култури .
 ```
 ### Labels
 
@@ -143,7 +141,7 @@ Output RDF graph:
 ```
 lex:ls_Бенцов_автомобил_sense1
         a                  ontolex:LexicalSense ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Бенцов_автомобил> .
+        ontolex:reference  dbr:Бенцов_автомобил .
 
 lex:le_Бенцов_автомобил
         a                      ontolex:LexicalEntry ;
@@ -165,24 +163,26 @@ Input:
 
 Output RDF graph:
 ```
-<https://dbpedia.org/lex/mk/ls_Самба_(танц)_sense1>
+lex:ls_Самба_(танц)_sense1 
         a                  ontolex:LexicalSense ;
         dct:subject        "танц"@mk ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Самба_(танц)> .
+        ontolex:reference  dbr:Самба_(танц) .
 
-<https://dbpedia.org/lex/mk/ls_Самба_(софтвер)_sense1>
+lex:ls_Самба_(софтвер)_sense1        
         a                  ontolex:LexicalSense ;
         dct:subject        "софтвер"@mk ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Самба_(софтвер)> .
+        ontolex:reference  dbr:Самба_(софтвер) .
 
 lex:cf_Самба  ontolex:writtenRep  "Самба"@mk .
 
-lex:ls_Самба_sense1  a     ontolex:LexicalSense ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Самба> .
+lex:ls_Самба_sense1  
+        a     ontolex:LexicalSense ;
+        ontolex:reference  dbr:Самба .
 
-lex:le_Самба  a                ontolex:LexicalEntry ;
+lex:le_Самба  
+        a                ontolex:LexicalEntry ;
         ontolex:canonicalForm  lex:cf_Самба ;
-        ontolex:sense          <https://dbpedia.org/lex/mk/ls_Самба_(танц)_sense1> , <https://dbpedia.org/lex/mk/ls_Самба_(софтвер)_sense1> , lex:ls_Самба_sense1 .
+        ontolex:sense          lex:ls_Самба_(танц)_sense1 , lex:ls_Самба_(софтвер)_sense1 , lex:ls_Самба_sense1 .
 ```
 
 ### Redirects
@@ -207,17 +207,17 @@ lex:le_Алфонсо_ди_Борџија
 lex:ls_Папа_Каликстус_III_sense1
         a                  ontolex:LexicalSense ;
         lexinfo:synonym    lex:ls_Папа_Каликстиј_III_sense1 , lex:ls_Алфонсо_ди_Борџија_sense1 , lex:ls_Папа_Каликст_III_sense1 ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Папа_Каликст_III> .
+        ontolex:reference  dbr:Папа_Каликст_III .
 
 lex:ls_Папа_Каликстиј_III_sense1
         a                  ontolex:LexicalSense ;
         lexinfo:synonym    lex:ls_Папа_Каликстус_III_sense1 , lex:ls_Алфонсо_ди_Борџија_sense1 , lex:ls_Папа_Каликст_III_sense1 ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Папа_Каликст_III> .
+        ontolex:reference  dbr:Папа_Каликст_III .
 
 lex:ls_Папа_Каликст_III_sense1
         a                  ontolex:LexicalSense ;
         lexinfo:synonym    lex:ls_Папа_Каликстус_III_sense1 , lex:ls_Папа_Каликстиј_III_sense1 , lex:ls_Алфонсо_ди_Борџија_sense1 ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Папа_Каликст_III> .
+        ontolex:reference  dbr:Папа_Каликст_III .
 
 lex:cf_Папа_Каликстиј_III
         ontolex:writtenRep  "Папа Каликстиј III"@mk .
@@ -241,7 +241,7 @@ lex:le_Папа_Каликст_III
 lex:ls_Алфонсо_ди_Борџија_sense1
         a                  ontolex:LexicalSense ;
         lexinfo:synonym    lex:ls_Папа_Каликстус_III_sense1 , lex:ls_Папа_Каликстиј_III_sense1 , lex:ls_Папа_Каликст_III_sense1 ;
-        ontolex:reference  <http://mk.dbpedia.org/resource/Папа_Каликст_III> .
+        ontolex:reference  dbr:Папа_Каликст_III .
 
 lex:le_Папа_Каликстус_III
         a                      ontolex:LexicalEntry ;
